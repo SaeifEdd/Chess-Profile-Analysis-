@@ -91,9 +91,9 @@ def save_games(games):
     :param games:
     :return:
     """
+    os.makedirs("data", exist_ok=True)
     games.insert(0, 'GameId', range(len(games)))
-    csv_path = "data/games.csv"
-    games.to_csv(csv_path, index=False)
+    games.to_csv(CSV_PATH, index=False)
     print(f"saved {len(games)} games into {CSV_PATH}")
 
 def main():
