@@ -88,14 +88,14 @@ else:
     filtered_games = games[games["date"] >= cutoff_date]
 
 # show charts
-display_total_games(games)
-plot_rating_over_time(games)
+display_total_games(filtered_games)
+plot_rating_over_time(filtered_games)
 col1, col2 = st.columns(2)
 with col1:
-    plot_wld_percentages(games)
+    plot_wld_percentages(filtered_games)
 with col2:
-    plot_avg_opponent_rating(games)
-plot_avg_moves(games)
+    plot_avg_opponent_rating(filtered_games)
+plot_avg_moves(filtered_games)
 
 
 
