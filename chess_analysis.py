@@ -1,74 +1,101 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import datetime
+from PIL import Image
+from datetime import datetime, timedelta
 
-st.write(
-    """
-         # Chess Profile Analysis 
-          
-    """
+
+# ======================
+# Helper functions
+# ======================
+def load_data(path="data/processed_games.csv"):
+    return pd.read_csv(path)
+
+def display_total_games(games):
+    st.write(f"**Total Number of Games Analyzed:** {len(games)}")
+
+def plot_rating_over_time(games):
+    fig = px.line(games, x='date', y='my_rating', title='Rating Over Time')
+    st.plotly_chart(fig)
+
+def plot_wld_percentages(games):
+    total_games = len(games)
+    percentages = (games['W_L'].value_counts() / total_games) * 100
+    data = pd.DataFrame({'Result': percentages.index, 'Percentage': percentages.values})
+    fig = px.pie(data, values='Percentage', names='Result', title='Win/Loss/Draw Percentages')
+    fig.update_layout(width=400, height=400)
+    st.plotly_chart(fig)
+
+def plot_avg_opponent_rating(games):
+    avg_ratings = games.groupby('W_L')['opponent_rating'].mean().reset_index()
+    fig = px.bar(avg_ratings, x='W_L', y='opponent_rating', color='W_L',
+                 labels={'W_L': 'Result', 'opponent_rating': 'Average Opponent Rating'},
+                 title='Average Opponent Rating by Result')
+    fig.update_layout(width=500, height=400)
+    st.plotly_chart(fig)
+
+def plot_avg_moves(games):
+    avg_moves = games.groupby('W_L')['Moves'].mean().reset_index()
+    fig = px.bar(avg_moves, x='W_L', y='Moves', color='W_L',
+                 labels={'W_L': 'Result', 'Moves': 'Average Number of Moves'},
+                 title='Average Number of Moves by Result')
+    fig.update_layout(width=500, height=400)
+    st.plotly_chart(fig)
+
+
+# ======================
+# App Layout
+# ======================
+st.set_page_config(page_title="Chess Profile Analysis", layout="wide")
+
+# Banner
+st.markdown("""
+<style>
+.block-container { padding-top: 0rem; }
+.banner img { max-height: 120px; object-fit: cover; }
+</style>
+""", unsafe_allow_html=True)
+st.image("assets/img2.jpeg", use_container_width=True)
+
+# Title
+st.title("♟️ Chess Profile Analysis")
+# Sidebar
+st.sidebar.header("Filters")
+st.sidebar.write("Use the dropdown below to select a time range.")
+# Data loading
+games = load_data()
+games["date"] = pd.to_datetime(games["date"])
+# Date filter
+date_options = {
+    "All Time": None,
+    "Past Week": 7,
+    "Past Month": 30,
+    "Past 3 Months": 90,
+    "Past 6 Months": 180,
+    "Past Year": 365,
+    "Past 2 Years": 730
+}
+selected_period = st.sidebar.selectbox(
+    "📅 Date Range:",
+    list(date_options.keys())
 )
 
-games = pd.read_csv('data/processed/games_processed.csv')
-total_games = len(games)
-# title
-st.write(f"Total Number of Games Analyzed: {total_games}")
+# Apply filter
+if date_options[selected_period] is None:
+    filtered_games = games  # Show all data
+else:
+    cutoff_date = datetime.now() - timedelta(days=date_options[selected_period])
+    filtered_games = games[games["date"] >= cutoff_date]
 
-# rating over time
-fig = px.line(games, x='Date', y='My Rating', title='Rating Over Time')
-st.plotly_chart(fig)
+# show charts
+display_total_games(games)
+plot_rating_over_time(games)
+col1, col2 = st.columns(2)
+with col1:
+    plot_wld_percentages(games)
+with col2:
+    plot_avg_opponent_rating(games)
+plot_avg_moves(games)
 
-# percentages of w/l/d
-percentages = (games['W/L'].value_counts() / total_games) * 100
-data = pd.DataFrame({
-    'Result': percentages.index,
-    'Percentage': percentages.values
-})
-# Create the pie chart
-fig = px.pie(data, values='Percentage', names='Result', title='Win/Loss/Draw Percentages')
-# Adjust the size of the plot
-fig.update_layout(
-    width=400,  # Set the width
-    height=400  # Set the height
-)
-st.plotly_chart(fig)
 
-# avg opponent ratings for w/l/d
-avg_ratings = games.groupby('W/L')['Opponent Rating'].mean().reset_index()
-fig = px.bar(
-    avg_ratings,
-    x='W/L',
-    y='Opponent Rating',
-    color='W/L',
-    labels={'W/L': 'Result', 'Opponent Rating': 'Average Opponent Rating'},
-    title='Average Opponent Rating by Result'
-)
-
-# Adjust the size of the plot
-fig.update_layout(
-    width=500,
-    height=400
-)
-st.plotly_chart(fig)
-
-# avg number of moves for w/l/d
-avg_nb_moves = games.groupby('W/L')['Moves'].mean().reset_index()
-fig = px.bar(
-    avg_nb_moves,
-    x='W/L',
-    y='Moves',
-    color='W/L',
-    labels={'W/L': 'Result', 'Number of moves': 'Average Number of Moves'},
-    title='Average number of Moves by Result'
-)
-
-# Adjust the size of the plot
-fig.update_layout(
-    width=500,
-    height=400
-)
-st.plotly_chart(fig)
 

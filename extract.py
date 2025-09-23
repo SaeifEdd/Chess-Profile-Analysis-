@@ -1,96 +1,107 @@
-import numpy as np
+import os
 import pandas as pd
 from io import StringIO
 import datetime
 import time
-import hashlib
 import os
 from dotenv import load_dotenv
 from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+#---------------------------
+# CONFIG
+#---------------------------
 load_dotenv()
-options = webdriver.ChromeOptions()
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-now = datetime.datetime.now()
-
 USERNAME = os.getenv("CUSERNAME")
 PASSWORD = os.getenv("CPASSWORD")
 
-GAMES_URL = "https://www.chess.com/games/archive?gameOwner=other_game&username=" + USERNAME + \
-"&gameType=live&gameResult=&opponent=&opening=&color=&gameTourTeam=&" + \
-"timeSort=desc&rated=rated&startDate%5Bdate%5D=08%2F01%2F2013&endDate%5Bdate%5D=" +  \
-str(now.month) + "%2F" + str(now.day) + "%2F" + str(now.year) + \
-"&ratingFrom=&ratingTo=&page="
-LOGIN_URL = "https://www.chess.com/login"
+LOGIN_URL = "https://www.chess.com/login_and_go?returnUrl=https://www.chess.com/"
+now = datetime.datetime.now()
 
-service = Service("chromedriver.exe")
-driver = webdriver.Chrome(service=service, options=options)
-driver.get(LOGIN_URL)
-
-#print(driver.page_source)
-# Wait until the username field is visible and interactable
-username_field = WebDriverWait(driver, 20).until(
-    EC.element_to_be_clickable((By.CSS_SELECTOR, "input[placeholder='Username or Email']"))
+GAMES_URL = (
+    f"https://www.chess.com/games/archive?gameOwner=other_game&username={USERNAME}"
+    f"&gameType=live&gameResult=&opponent=&opening=&color=&gameTourTeam=&"
+    f"timeSort=desc&rated=rated&startDate%5Bdate%5D=08%2F01%2F2013&endDate%5Bdate%5D="
+    f"{str(now.month)}%2F{str(now.day)}%2F{str(now.year)}"
+    f"&ratingFrom=&ratingTo=&page="
 )
-username_field.send_keys(USERNAME)
 
-# Wait until the password field is visible and interactable
-password_field = WebDriverWait(driver, 20).until(
-    EC.element_to_be_clickable((By.CSS_SELECTOR, "input[placeholder='Password']"))
-)
-password_field.send_keys(PASSWORD)
+CSV_PATH = "data/games.csv"
 
-# Wait until the login button is clickable
-login_button = WebDriverWait(driver, 20).until(
-    EC.element_to_be_clickable((By.ID, "login"))
-)
-login_button.click()
+def get_driver():
+    """
+    setup and configure chromedriver
+    :return: a driver
+    """
+    options = webdriver.ChromeOptions()
+    options.binary_location = "/snap/bin/chromium"
+    options.add_argument('--headless')
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--remote-debugging-port=9222")
+    return webdriver.Chrome(service=Service("./chromedriver"), options=options)
 
-time.sleep(15)
 
-# print("login ok")
-
-tables = []
-game_links = []
-
-for page_number in range(8):
-    driver.get(GAMES_URL + str(page_number + 1))
-    time.sleep(5)
-    tables.append(
-        pd.read_html(
-            StringIO(str(driver.page_source)),
-            attrs={'class': 'table-component table-hover archive-games-table'}
-        )[0]
+def login(driver):
+    """
+    login to chess.com using credentials from .env file
+    :param driver:
+    :return:
+    """
+    driver.get(LOGIN_URL)
+    username_field = WebDriverWait(driver, 15).until(
+        EC.presence_of_element_located((By.ID, "login-username"))
     )
+    username_field.send_keys(USERNAME)
+    password_field = driver.find_element(By.ID, "login-password")
+    password_field.send_keys(PASSWORD)
+    login_button = driver.find_element(By.ID, "login")
+    login_button.click()
+    # Wait for login to complete
+    time.sleep(20)
 
-    table_user_cells = driver.find_elements(By.CLASS_NAME, 'archive-games-user-cell')
-    for cell in table_user_cells:
-        link = cell.find_elements(By.TAG_NAME, 'a')[0]
-        game_links.append(link.get_attribute('href'))
 
-driver.quit()
 
-games = pd.concat(tables)
+def scrape_games(driver, nb_pages=10):
+    """
+    scrape games from chess.com profile archive
+    :param driver:
+    :return: games data in pandas dataframe
+    """
+    tables = []
+    for page_number in range(nb_pages):
+        driver.get(GAMES_URL + str(page_number + 1))
+        time.sleep(10)
+        tables.append(
+            pd.read_html(
+                StringIO(str(driver.page_source)),
+                attrs={'class': 'table-component table-hover archive-games-table'}
+            )[0]
+        )
 
-identifier = pd.Series(
-    games['Players'] + str(games['Result']) + str(games['Moves']) + games['Date']
-).apply(lambda x: x.replace(" ", ""))
+    return pd.concat(tables)
 
-games.insert(
-    0,
-    'GameId',
-    identifier.apply(lambda x: hashlib.sha1(x.encode("utf-8")).hexdigest())
-)
-
-# load raw data into csv file
-csv_path = "data/raw/games.csv"
-if not os.path.exists(csv_path):
+def save_games(games):
+    """
+    save dataframe into a csv file
+    :param games:
+    :return:
+    """
+    games.insert(0, 'GameId', range(len(games)))
+    csv_path = "data/games.csv"
     games.to_csv(csv_path, index=False)
+    print(f"saved {len(games)} games into {CSV_PATH}")
 
+def main():
+    driver = get_driver()
+    login(driver)
+    games = scrape_games(driver, 20)
+    save_games(games)
+    driver.quit()
+
+if __name__ == "__main__":
+    main()
